@@ -67,30 +67,35 @@ def base_layout(title="", height=460, yaxis_fmt=".0%"):
                    tickformat=yaxis_fmt, showspikes=True),
     )
 
-# ─── Sidebar ──────────────────────────────────────────────────────────────────
+# ─── Auto-load Excel from repo ────────────────────────────────────────────────
+import os
+EXCEL_FILE = "Input Data.xlsx"
+
+if not os.path.exists(EXCEL_FILE):
+    st.error(f"❌ Could not find '{EXCEL_FILE}' in the repository. Make sure it is uploaded to GitHub.")
+    st.stop()
+
+with open(EXCEL_FILE, "rb") as f:
+    file_bytes = f.read()
+
+# ─── Sidebar — only sheet selector ────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## ⚙️ Config")
-    uploaded_file = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"])
+    try:
+        xf = pd.ExcelFile(io.BytesIO(file_bytes))
+        available_sheets = xf.sheet_names
+    except Exception as e:
+        st.error(f"Could not read sheet names: {e}")
+        available_sheets = []
 
-    # Sheet / index selector — populated after file is uploaded
     selected_sheet = None
-    if uploaded_file is not None:
-        try:
-            xf = pd.ExcelFile(io.BytesIO(uploaded_file.read()))
-            available_sheets = xf.sheet_names
-            uploaded_file.seek(0)          # reset so pd.read_excel still works later
-        except Exception as e:
-            st.error(f"Could not read sheet names: {e}")
-            available_sheets = []
-
-        if available_sheets:
-            st.markdown("---")
-            st.markdown("**Select Index**")
-            selected_sheet = st.selectbox(
-                "Index (sheet)",
-                available_sheets,
-                help="Each sheet represents one index. Columns must be: date, tri, pe, div_yield_pct, eps",
-            )
+    if available_sheets:
+        st.markdown("**Select Index**")
+        selected_sheet = st.selectbox(
+            "Index (sheet)",
+            available_sheets,
+            help="Each sheet = one index. Columns must be: date, tri, pe, div_yield_pct, eps",
+        )
 
 # ─── Header ───────────────────────────────────────────────────────────────────
 st.markdown("# 📊 Return Decomposition Dashboard")
@@ -101,12 +106,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if uploaded_file is None:
-    st.info("👈 Upload an Excel file in the sidebar to begin.")
-    st.stop()
-
 if not selected_sheet:
-    st.warning("No sheets found in the uploaded file.")
+    st.warning("No sheets found in the data file.")
     st.stop()
 
 # ─── Data loading ─────────────────────────────────────────────────────────────
@@ -157,7 +158,6 @@ def load_and_process(file_bytes, sheet):
     return df, growth_dict, corr_dict
 
 try:
-    file_bytes = uploaded_file.read()
     df, growth_dict, corr_dict = load_and_process(file_bytes, selected_sheet)
 except Exception as e:
     st.error(f"❌ {e}")
